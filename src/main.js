@@ -40,7 +40,10 @@ async function initializeScanner() {
     // Create DataCaptureContext with license key and module loaders
     context = await DataCaptureContext.forLicenseKey(licenseKey, {
       libraryLocation: 'https://cdn.jsdelivr.net/npm/scandit-sdk@6.x/build',
-      moduleLoaders: [{ moduleName: 'barcode' }]
+      moduleLoaders: [
+        { moduleName: 'core' },
+        { moduleName: 'barcode' }
+      ]
     })
 
     // Setup camera
