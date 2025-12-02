@@ -1,24 +1,13 @@
 import './style.css'
-import {
-  Camera,
-  CameraSwitchControl,
-  DataCaptureContext,
-  DataCaptureView,
-  FrameSourceState
-} from '@scandit/web-datacapture-core'
-import {
-  Barcode,
-  BarcodeCapture,
-  BarcodeCaptureOverlay,
-  BarcodeCaptureSettings,
-  Symbology
-} from '@scandit/web-datacapture-barcode'
+import * as SDCCore from '@scandit/web-datacapture-core'
+import * as SDCBarcode from '@scandit/web-datacapture-barcode'
 
 // State
 let inventory = []
 let context = null
 let camera = null
 let barcodeCapture = null
+let view = null
 
 // DOM Elements
 const countElement = document.getElementById('count')
@@ -37,36 +26,35 @@ async function initializeScanner() {
       )
     }
 
-    // Create DataCaptureContext with license key and module loaders
-    context = await DataCaptureContext.forLicenseKey(licenseKey, {
-      libraryLocation: 'https://cdn.jsdelivr.net/npm/scandit-sdk@6.x/build',
-      moduleLoaders: [
-        { moduleName: 'core' },
-        { moduleName: 'barcode' },
-        { moduleName: 'barcodecapture' }
-      ]
+    // Create DataCaptureContext with license key and local library location
+    // The libraryLocation must point to the folder containing the WASM files (copied to public/sdc-lib)
+    context = await SDCCore.DataCaptureContext.forLicenseKey(licenseKey, {
+      libraryLocation: 'sdc-lib/'
     })
 
-    // Setup camera
-    camera = Camera.default
-    await context.setFrameSource(camera)
+    // Setup camera as frame source
+    const cameraSettings = SDCBarcode.BarcodeCapture.recommendedCameraSettings
+    camera = SDCCore.Camera.default
+    if (camera) {
+      await camera.applySettings(cameraSettings)
+      await context.setFrameSource(camera)
+    }
 
     // Configure barcode capture settings for Code 128
-    const settings = new BarcodeCaptureSettings()
+    const settings = new SDCBarcode.BarcodeCaptureSettings()
 
     // Enable only Code 128 symbology for better performance
-    settings.enableSymbologies([Symbology.Code128])
+    settings.enableSymbologies([SDCBarcode.Symbology.Code128])
 
     // Enable continuous scanning by setting codeDuplicateFilter to 0
-    // This allows scanning the same code multiple times
     settings.codeDuplicateFilter = 0
 
     // Create BarcodeCapture mode
-    barcodeCapture = await BarcodeCapture.forContext(context, settings)
+    barcodeCapture = await SDCBarcode.BarcodeCapture.forContext(context, settings)
 
-    // Listen to barcode scan events
-    barcodeCapture.addListener({
-      didScan: async (barcodeCapture, session) => {
+    // Add listener for barcode scans
+    const listener = {
+      didScan: (barcodeCapture, session) => {
         const recognizedBarcodes = session.newlyRecognizedBarcodes
 
         if (recognizedBarcodes.length > 0) {
@@ -79,32 +67,33 @@ async function initializeScanner() {
           }
         }
       }
-    })
+    }
+
+    barcodeCapture.addListener(listener)
 
     // Create DataCaptureView and attach to DOM
-    const view = await DataCaptureView.forContext(context)
+    view = await SDCCore.DataCaptureView.forContext(context)
     view.connectToElement(document.getElementById('data-capture-view'))
 
     // Add camera switch control
-    view.addControl(new CameraSwitchControl())
+    view.addControl(new SDCCore.CameraSwitchControl())
 
     // Add overlay for visual feedback
-    const overlay = await BarcodeCaptureOverlay.withBarcodeCaptureForView(
+    await SDCBarcode.BarcodeCaptureOverlay.withBarcodeCaptureForView(
       barcodeCapture,
       view
     )
 
-    // Enable barcode capture
-    await barcodeCapture.setEnabled(true)
-
     // Start camera
-    await camera.switchToDesiredState(FrameSourceState.On)
+    if (camera) {
+      await camera.switchToDesiredState(SDCCore.FrameSourceState.On)
+    }
 
     console.log('✅ Scanner Scandit initialisé avec succès')
 
   } catch (error) {
     console.error('Erreur lors de l\'initialisation du scanner:', error)
-    showError(error.message)
+    showError(error.message || 'Erreur d\'initialisation du scanner')
   }
 }
 
@@ -190,11 +179,8 @@ initializeScanner()
 
 // Cleanup on page unload
 window.addEventListener('beforeunload', async () => {
-  if (barcodeCapture) {
-    await barcodeCapture.setEnabled(false)
-  }
   if (camera) {
-    await camera.switchToDesiredState(FrameSourceState.Off)
+    await camera.switchToDesiredState(SDCCore.FrameSourceState.Off)
   }
   if (context) {
     await context.dispose()
