@@ -27,3 +27,6 @@ public
 # Environment variables
 .env
 .env.local
+
+# Generated Scandit assets
+public/sdc-lib/

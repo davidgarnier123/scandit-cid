@@ -29,7 +29,12 @@ async function initializeScanner() {
     // Create DataCaptureContext with license key and local library location
     // The libraryLocation must point to the folder containing the WASM files (copied to public/sdc-lib)
     context = await SDCCore.DataCaptureContext.forLicenseKey(licenseKey, {
-      libraryLocation: 'sdc-lib/'
+      libraryLocation: 'sdc-lib/',
+      moduleLoaders: [
+        { moduleName: 'core' },
+        { moduleName: 'barcode' },
+        { moduleName: 'barcodecapture' }
+      ]
     })
 
     // Setup camera as frame source
