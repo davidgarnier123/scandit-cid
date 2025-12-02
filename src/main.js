@@ -37,12 +37,10 @@ async function initializeScanner() {
       )
     }
 
-    // Configure library location for WASM files
-    const libraryLocation = 'https://cdn.jsdelivr.net/npm/scandit-sdk@6.x/build'
-
-    // Create DataCaptureContext with license key
+    // Create DataCaptureContext with license key and module loaders
     context = await DataCaptureContext.forLicenseKey(licenseKey, {
-      libraryLocation: libraryLocation
+      libraryLocation: 'https://cdn.jsdelivr.net/npm/scandit-sdk@6.x/build',
+      moduleLoaders: [{ moduleName: 'barcode' }]
     })
 
     // Setup camera
