@@ -1,19 +1,13 @@
 import './style.css'
-import { DataCaptureContext } from '@scandit/web-datacapture-core'
-import {
-  barcodeCaptureLoader,
-  SparkScanSettings,
-  SparkScan,
-  SparkScanViewSettings,
-  SparkScanView,
-  Symbology
-} from '@scandit/web-datacapture-barcode'
+import * as SDCCore from '@scandit/web-datacapture-core'
+import * as SDCBarcode from '@scandit/web-datacapture-barcode'
 
 // State
-let context = null
-let sparkScan = null
-let sparkScanView = null
 let inventory = []
+let context = null
+let camera = null
+let barcodeCapture = null
+let view = null
 
 // DOM Elements
 const countElement = document.getElementById('count')
@@ -21,6 +15,7 @@ const inventoryList = document.getElementById('inventory-list')
 const clearBtn = document.getElementById('clear-btn')
 const errorMessage = document.getElementById('error-message')
 
+// Initialize Scandit
 async function initializeScanner() {
   try {
     const licenseKey = import.meta.env.VITE_SCANDIT_LICENSE_KEY
@@ -31,59 +26,83 @@ async function initializeScanner() {
       )
     }
 
-    // 1. Create a new DataCaptureContext instance
-    await DataCaptureContext.forLicenseKey(licenseKey, {
-      libraryLocation: 'sdc-lib/',
-      moduleLoaders: [barcodeCaptureLoader()]
+    // Create DataCaptureContext with license key and local library location
+    // The libraryLocation must point to the folder containing the WASM files (copied to public/sdc-lib)
+    // Use local library for offline support
+    // Ensure the path is correctly resolved relative to the base URI
+    const libraryLocation = new URL('sdc-lib/', document.baseURI).toString()
+    console.log('Loading Scandit library from:', libraryLocation)
+
+    context = await SDCCore.DataCaptureContext.forLicenseKey(licenseKey, {
+      libraryLocation: libraryLocation,
+      moduleLoaders: [
+        { moduleName: 'core' },
+        { moduleName: 'barcode' },
+        { moduleName: 'barcodecapture' }
+      ]
     })
 
-    context = await DataCaptureContext.create()
+    // Setup camera as frame source
+    const cameraSettings = SDCBarcode.BarcodeCapture.recommendedCameraSettings
+    camera = SDCCore.Camera.default
+    if (camera) {
+      await camera.applySettings(cameraSettings)
+      await context.setFrameSource(camera)
+    }
 
-    // 2. Configure the Spark Scan Mode
-    const sparkScanSettings = new SparkScanSettings()
-    // Enable EAN13 and Code 128 as examples, adjust as needed
-    sparkScanSettings.enableSymbologies([Symbology.EAN13UPCA, Symbology.Code128])
+    // Configure barcode capture settings for Code 128
+    const settings = new SDCBarcode.BarcodeCaptureSettings()
 
-    sparkScan = SparkScan.forSettings(sparkScanSettings)
+    // Enable only Code 128 symbology for better performance
+    settings.enableSymbologies([SDCBarcode.Symbology.Code128])
 
-    // 3. Setup the Spark Scan View
-    const sparkScanViewSettings = new SparkScanViewSettings()
-    // You can customize appearance here if needed
+    // Enable continuous scanning by setting codeDuplicateFilter to 0
+    settings.codeDuplicateFilter = 0
 
-    // Add SparkScanView to the DOM
-    // We attach it to document.body as it's a floating UI usually, 
-    // or a specific container if you prefer. The guide suggests document.body or a parent.
-    // Given the previous code used 'data-capture-view', we might want to check if that's still appropriate,
-    // but SparkScanView is often full screen or floating. Let's use document.body for now as per guide example
-    // or we can try to attach it to a specific container if the UI requires it.
-    // The guide says: "Add a SparkScanView to your view hierarchy."
-    sparkScanView = SparkScanView.forElement(
-      document.body,
-      context,
-      sparkScan,
-      sparkScanViewSettings
-    )
+    // Create BarcodeCapture mode
+    barcodeCapture = await SDCBarcode.BarcodeCapture.forContext(context, settings)
 
-    await sparkScanView.prepareScanning()
-
-    // 4. Register the Listener
+    // Add listener for barcode scans
     const listener = {
-      didScan: (sparkScan, session, frameData) => {
-        const barcode = session.newlyRecognizedBarcode
-        if (barcode != null) {
+      didScan: (barcodeCapture, session) => {
+        const recognizedBarcodes = session.newlyRecognizedBarcodes
+
+        if (recognizedBarcodes.length > 0) {
+          const barcode = recognizedBarcodes[0]
           addToInventory(barcode.data, barcode.symbology)
 
-          // Feedback is handled by SparkScan usually, but we can add custom if needed
+          // Optional: Add haptic feedback on mobile
+          if (navigator.vibrate) {
+            navigator.vibrate(100)
+          }
         }
       }
     }
 
-    sparkScan.addListener(listener)
+    barcodeCapture.addListener(listener)
 
-    console.log('✅ SparkScan initialisé avec succès')
+    // Create DataCaptureView and attach to DOM
+    view = await SDCCore.DataCaptureView.forContext(context)
+    view.connectToElement(document.getElementById('data-capture-view'))
+
+    // Add camera switch control
+    view.addControl(new SDCCore.CameraSwitchControl())
+
+    // Add overlay for visual feedback
+    await SDCBarcode.BarcodeCaptureOverlay.withBarcodeCaptureForView(
+      barcodeCapture,
+      view
+    )
+
+    // Start camera
+    if (camera) {
+      await camera.switchToDesiredState(SDCCore.FrameSourceState.On)
+    }
+
+    console.log('✅ Scanner Scandit initialisé avec succès')
 
   } catch (error) {
-    console.error('Erreur lors de l\'initialisation de SparkScan:', error)
+    console.error('Erreur lors de l\'initialisation du scanner:', error)
     showError(error.message || 'Erreur d\'initialisation du scanner')
   }
 }
@@ -104,7 +123,7 @@ function addToInventory(barcodeData, symbology) {
     timestamp: timeString
   }
 
-  inventory.unshift(item)
+  inventory.unshift(item) // Add to beginning
   updateInventoryDisplay()
   updateCounter()
 }
@@ -162,28 +181,18 @@ function showError(message) {
   }, 5000)
 }
 
-// Handle app state changes
-async function handleAppStateChange() {
-  if (document.hidden) {
-    if (sparkScanView) sparkScanView.stopScanning()
-  } else {
-    if (sparkScanView) sparkScanView.prepareScanning()
-  }
-}
-
 // Event listeners
 clearBtn.addEventListener('click', clearInventory)
-document.addEventListener('visibilitychange', handleAppStateChange)
 
-// Initialize
+// Initialize on page load
 initializeScanner()
 
-// Cleanup
-window.addEventListener('beforeunload', () => {
-  if (sparkScanView) {
-    sparkScanView.stopScanning()
+// Cleanup on page unload
+window.addEventListener('beforeunload', async () => {
+  if (camera) {
+    await camera.switchToDesiredState(SDCCore.FrameSourceState.Off)
   }
   if (context) {
-    context.dispose()
+    await context.dispose()
   }
 })
