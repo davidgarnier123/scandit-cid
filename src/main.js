@@ -1,13 +1,8 @@
 import './style.css'
-import * as SDCCore from '@scandit/web-datacapture-core'
-import * as SDCBarcode from '@scandit/web-datacapture-barcode'
+import { Html5QrcodeScanner, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 
 // State
 let inventory = []
-let context = null
-let camera = null
-let barcodeCapture = null
-let view = null
 
 // DOM Elements
 const countElement = document.getElementById('count')
@@ -15,96 +10,61 @@ const inventoryList = document.getElementById('inventory-list')
 const clearBtn = document.getElementById('clear-btn')
 const errorMessage = document.getElementById('error-message')
 
-// Initialize Scandit
-async function initializeScanner() {
+function initializeScanner() {
   try {
-    const licenseKey = import.meta.env.VITE_SCANDIT_LICENSE_KEY
+    // Configure formats - focusing on common ones for inventory
+    const formatsToSupport = [
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.QR_CODE
+    ]
 
-    if (!licenseKey || licenseKey === 'votre_cle_scandit_ici') {
-      throw new Error(
-        'Clé Scandit non configurée. Créez un fichier .env avec VITE_SCANDIT_LICENSE_KEY=votre_cle'
-      )
-    }
-
-    // Create DataCaptureContext with license key and local library location
-    // The libraryLocation must point to the folder containing the WASM files (copied to public/sdc-lib)
-    // Use local library for offline support
-    // Ensure the path is correctly resolved relative to the base URI
-    const libraryLocation = new URL('sdc-lib/', document.baseURI).toString()
-    console.log('Loading Scandit library from:', libraryLocation)
-
-    context = await SDCCore.DataCaptureContext.forLicenseKey(licenseKey, {
-      libraryLocation: libraryLocation,
-      moduleLoaders: [
-        { moduleName: 'core' },
-        { moduleName: 'barcode' },
-        { moduleName: 'barcodecapture' }
-      ]
-    })
-
-    // Setup camera as frame source
-    const cameraSettings = SDCBarcode.BarcodeCapture.recommendedCameraSettings
-    camera = SDCCore.Camera.default
-    if (camera) {
-      await camera.applySettings(cameraSettings)
-      await context.setFrameSource(camera)
-    }
-
-    // Configure barcode capture settings for Code 128
-    const settings = new SDCBarcode.BarcodeCaptureSettings()
-
-    // Enable only Code 128 symbology for better performance
-    settings.enableSymbologies([SDCBarcode.Symbology.Code128])
-
-    // Enable continuous scanning by setting codeDuplicateFilter to 0
-    settings.codeDuplicateFilter = 0
-
-    // Create BarcodeCapture mode
-    barcodeCapture = await SDCBarcode.BarcodeCapture.forContext(context, settings)
-
-    // Add listener for barcode scans
-    const listener = {
-      didScan: (barcodeCapture, session) => {
-        const recognizedBarcodes = session.newlyRecognizedBarcodes
-
-        if (recognizedBarcodes.length > 0) {
-          const barcode = recognizedBarcodes[0]
-          addToInventory(barcode.data, barcode.symbology)
-
-          // Optional: Add haptic feedback on mobile
-          if (navigator.vibrate) {
-            navigator.vibrate(100)
-          }
-        }
+    const config = {
+      fps: 10,
+      qrbox: { width: 250, height: 250 },
+      aspectRatio: 1.0,
+      formatsToSupport: formatsToSupport,
+      experimentalFeatures: {
+        useBarCodeDetectorIfSupported: true
       }
     }
 
-    barcodeCapture.addListener(listener)
-
-    // Create DataCaptureView and attach to DOM
-    view = await SDCCore.DataCaptureView.forContext(context)
-    view.connectToElement(document.getElementById('data-capture-view'))
-
-    // Add camera switch control
-    view.addControl(new SDCCore.CameraSwitchControl())
-
-    // Add overlay for visual feedback
-    await SDCBarcode.BarcodeCaptureOverlay.withBarcodeCaptureForView(
-      barcodeCapture,
-      view
+    // Initialize scanner
+    // 'data-capture-view' is the ID of the container element
+    const scanner = new Html5QrcodeScanner(
+      "data-capture-view",
+      config,
+      /* verbose= */ false
     )
 
-    // Start camera
-    if (camera) {
-      await camera.switchToDesiredState(SDCCore.FrameSourceState.On)
-    }
+    scanner.render(onScanSuccess, onScanFailure)
 
-    console.log('✅ Scanner Scandit initialisé avec succès')
+    console.log('✅ html5-qrcode scanner initialized')
 
   } catch (error) {
-    console.error('Erreur lors de l\'initialisation du scanner:', error)
-    showError(error.message || 'Erreur d\'initialisation du scanner')
+    console.error('Error initializing scanner:', error)
+    showError('Failed to initialize scanner: ' + error.message)
   }
+}
+
+function onScanSuccess(decodedText, decodedResult) {
+  // Handle the scanned code
+  console.log(`Code matched = ${decodedText}`, decodedResult)
+
+  // Add to inventory
+  addToInventory(decodedText, decodedResult.result.format?.formatName || 'UNKNOWN')
+
+  // Optional: Add haptic feedback
+  if (navigator.vibrate) {
+    navigator.vibrate(100)
+  }
+}
+
+function onScanFailure(error) {
+  // handle scan failure, usually better to ignore and keep scanning.
+  // for example:
+  // console.warn(`Code scan error = ${error}`);
 }
 
 // Add scanned item to inventory
@@ -116,6 +76,7 @@ function addToInventory(barcodeData, symbology) {
     second: '2-digit'
   })
 
+  // Check for duplicates if needed, or just add
   const item = {
     id: now.getTime(),
     barcode: barcodeData,
@@ -123,7 +84,7 @@ function addToInventory(barcodeData, symbology) {
     timestamp: timeString
   }
 
-  inventory.unshift(item) // Add to beginning
+  inventory.unshift(item)
   updateInventoryDisplay()
   updateCounter()
 }
@@ -185,14 +146,7 @@ function showError(message) {
 clearBtn.addEventListener('click', clearInventory)
 
 // Initialize on page load
-initializeScanner()
-
-// Cleanup on page unload
-window.addEventListener('beforeunload', async () => {
-  if (camera) {
-    await camera.switchToDesiredState(SDCCore.FrameSourceState.Off)
-  }
-  if (context) {
-    await context.dispose()
-  }
+// Wait for DOM to be ready
+document.addEventListener('DOMContentLoaded', () => {
+  initializeScanner()
 })
