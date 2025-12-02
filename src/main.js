@@ -42,7 +42,8 @@ async function initializeScanner() {
       libraryLocation: 'https://cdn.jsdelivr.net/npm/scandit-sdk@6.x/build',
       moduleLoaders: [
         { moduleName: 'core' },
-        { moduleName: 'barcode' }
+        { moduleName: 'barcode' },
+        { moduleName: 'barcodecapture' }
       ]
     })
 
