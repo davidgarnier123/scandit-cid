@@ -1,5 +1,5 @@
 import './style.css'
-import { Html5QrcodeScanner, Html5QrcodeSupportedFormats } from 'html5-qrcode'
+import { Html5QrcodeScanner, Html5QrcodeSupportedFormats, Html5QrcodeScanType } from 'html5-qrcode'
 
 // State
 let inventory = []
@@ -25,6 +25,7 @@ function initializeScanner() {
       qrbox: { width: 250, height: 250 },
       aspectRatio: 1.0,
       formatsToSupport: formatsToSupport,
+      supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
       experimentalFeatures: {
         useBarCodeDetectorIfSupported: true
       }
