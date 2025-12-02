@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="description" content="Scanner de codes-barres pour inventaire" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Inventaire" />
+    <link rel="icon" type="image/png" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <title>Scandit Inventaire</title>
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <h1>📦 Inventaire</h1>
+        <div class="counter">
+          <span id="count">0</span>
+          <span class="label">codes scannés</span>
+        </div>
+      </header>
+
+      <main>
+        <div id="scanner-container">
+          <div id="data-capture-view"></div>
+          <div class="scanner-overlay">
+            <div class="scan-frame"></div>
+            <p class="scan-instruction">Positionnez le code-barres dans le cadre</p>
+          </div>
+        </div>
+
+        <div id="inventory-section">
+          <h2>Liste d'inventaire</h2>
+          <div id="inventory-list" class="inventory-list"></div>
+          <button id="clear-btn" class="clear-btn">Effacer la liste</button>
+        </div>
+      </main>
+
+      <div id="error-message" class="error-message hidden"></div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
